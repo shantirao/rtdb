@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>GSE hexapod control</title>
+<style>
+.right {float:right}
+table {border-collapse:collapse;}
+td {vertical-align:top; border: 1px solid #a0a0c0}
+td.layout {border: 0px; padding:0px; margin:0px; vertical-align:top}
+h1 {font-size: 12pt; margin-top: 0px; background:#ffd0b0; margin:-3px; border-radius: 3px; margin-bottom: 3px; padding: 4px;}
+.section { vertical-align:top;background: #ffffff;border: 1px solid #c02020; border-radius:5px; margin: 5px; padding: 3px; }
+.block {display:inline-block; vertical-align:top;  position:relative;}
+.pane {display:inline-block; vertical-align:top;  position:relative;border:1px solid black; padding:6px}
+.click:hover {cursor: pointer;}
+</style>
+<script language="javascript" type="text/javascript" src="common.js" version="1.7" ></script>
+<script language="javascript" type="text/javascript" src="matrix.js" ></script>
+<script language="javascript" type="text/javascript" src="raytrace4.js" ></script>
+<script>
+
+state = {
+  hexapod :[0,0,0,0,0,0],
+  preview :[0,0,0,0,0,0],
+  pivot:[0,0,0],
+  cgh : [10, 10, 10]
+  }
+
+function resizeLastNode(node,margin)
+{
+	var windowHeight;
+
+	if (typeof window.innerWidth != 'undefined')
+		windowHeight = window.innerHeight;
+	else if (typeof document.documentElement != 'undefined'
+			&& typeof document.documentElement.clientWidth != 'undefined'
+			&& document.documentElement.clientWidth != 0) // IE6 in standards compliant mode (i.e. with a valid doctype as the first line in the document)
+		windowHeight = document.documentElement.clientHeight;
+	else // older versions of IE
+		windowHeight = document.getElementsByTagName('body')[0].clientHeight;
+
+	node.style.height = (windowHeight - node.offsetTop  - (margin||0))+ "px";
+}
+
+function writeConsole(text)
+{
+ $('console').innerHTML += '<tt>' + text + '</tt><br>'
+ resizeLastNode($('divConsole'),45)
+}
+
+function rexec(command,handler,quiet)
+{
+//debug mode
+ if ($('debugmode').checked)
+ {
+ 	var p = command.split(' ');
+	 p.shift();
+	 switch (p.shift())
+	 {
+	 	case 'move': handler(p.join(' ')); break;
+	 	case 'pivot': state.pivot=p.map(Number);
+	 }
+	 
+	 return;
+ }
+
+ if (!quiet) writeConsole('<b>&gt;</b>' + command)
+ loadXMLDoc('/exec?' + command, function(x) {if (x &&!quiet) writeConsole(x);handler(x)})
+}
+
+
+</script>
+</head>
+<body style="background: #000000;border-top:0px; margin:0px; font-family: sans-serif">
+
+<div id=header style="background: #0066b2; color: #ffffff; padding:3px; font-weight: bold">
+GSE hexapod control
+<button style="float:right;" onClick="loadXMLDoc('quit'); window.close()">Quit</button>
+<!-- button onClick="startup()">Startup</button -->
+<!-- button onClick="window.open('history.jsp')">History</button -->
+<!-- a style="text-decoration: none;color:#ffffff" href="http://127.0.0.1:140/" target="rtdb">Database</a -->
+|
+<span onClick="toggle('divHexapod')">Hexapod</span>
+|
+<span onClick="toggle('divNotes')">Notes</span>
+|
+<span onClick="toggle('divLog')">Log</span>
+|
+<span onClick="toggle('divConsole')">Console</span>
+</div>
+
+<table cellpadding=0 border=0 width=100%>
+<tr><td class=layout>
+
+<div class=section id=divDisplay>
+<H1>Planning <input id='debugmode' type=checkbox checked=checked />Debug mode</H1>
+<table width=100%>
+	<tr><td>
+		<button onClick="applyPreview()">Apply</button><br>
+		Pivot <span id=pivot></span><br>
+		Transform <span id=transform></span></td>
+		<td align=center><b>X'</b></td><td align=center><b>Y'</b></td><td align=center><b>Z'</b></td>
+				<td rowspan=3>
+					<div>
+<canvas id=display width=300 height=300></canvas></div>
+
+
+<tr>
+	<td>Translation (mm)<br>
+	<button onClick="scaleButtons('pret',10,5,1E-9)">x 10</button>
+	<button onClick="scaleButtons('pret',.1,5,1E-9)">/ 10</button></td>
+<td align=center nowrap><span id=pre0></span><br><button name=pret onClick="preview(0,this)">-1</button><button name=pret onClick="preview(0,this)">+1</button>
+                                      <br><button name=pret onClick="preview(0,this)">-5</button><button name=pret onClick="preview(0,this)">+5</button></td>
+
+<td align=center nowrap><span id=pre1></span><br><button name=pret onClick="preview(1,this)">-1</button><button name=pret onClick="preview(1,this)">+1</button>
+                                      <br><button name=pret onClick="preview(1,this)">-5</button><button name=pret onClick="preview(1,this)">+5</button></td>
+
+<td align=center nowrap><span id=pre2></span><br><button name=pret onClick="preview(2,this)">-1</button><button name=pret onClick="preview(2,this)">+1</button>
+                                      <br><button name=pret onClick="preview(2,this)">-5</button><button name=pret onClick="preview(2,this)">+5</button></td>
+<tr>
+<td>Rotation (&deg;)
+<br>
+<button onClick="scaleButtons('prer',10,5,1E-9)">x 10</button>
+<button onClick="scaleButtons('prer',.1,5,1E-9)">/ 10</button>
+<td align=center nowrap><span id=pre3></span><br><button name=prer onClick="preview(3,this)">-1</button><button name=prer onClick="preview(3,this)">+1</button>
+                                      <br><button name=prer onClick="preview(3,this)">-5</button><button name=prer onClick="preview(3,this)">+5</button>
+
+<td align=center nowrap><span id=pre4></span><br><button name=prer onClick="preview(4,this)">-1</button><button name=prer onClick="preview(4,this)">+1</button>
+                                      <br><button name=prer onClick="preview(4,this)">-5</button><button name=prer onClick="preview(4,this)">+5</button>
+
+<td align=center nowrap><span id=pre5></span><br><button name=prer onClick="preview(5,this)">-1</button><button name=prer onClick="preview(5,this)">+1</button>
+                                      <br><button name=prer onClick="preview(5,this)">-5</button><button name=prer onClick="preview(5,this)">+5</button>
+
+</tr>
+</table>
+</div>
+
+<div class=section id=divHexapod>
+<H1>Hexapod <span id=hstatus>Offline <button onClick="rexec('hexapod.js move',hexapodReply,true) ">wake up</button></span>
+
+<span class=right>
+<button onClick="rexec('hexapod.js startup',hexapodReply)">Startup (load yesterday's configuration)</button>
+<button onClick="rexec('hexapod.js home',hexapodReply)">Home (seek 0,0,0)</button>
+<button onClick="rexec('hexapod.js safe',hexapodReply)">Secure for power-down</button>
+</span>
+</H1>
+
+
+<table  border=1 cellpadding=10 style="width:100%">
+
+<tr><td valign=middle><button onClick="rexec('hexapod.js move',hexapodReply);">Refresh</button></td>
+<td align=center><b>X</b><td align=center><b>Y</b><td align=center><b>Z</b>
+<tr>
+<td>Translation (mm)
+<br>
+<button onClick="scaleButtons('hext',10,5,1E-9)">x 10</button>
+<button onClick="scaleButtons('hext',.1,5,1E-9)">/ 10</button>
+<td align=center><span id=hex0></span><br><button name=hext onClick="hexapod(0,this)">-1</button><button name=hext onClick="hexapod(0,this)">+1</button>
+                                      <br><button name=hext onClick="hexapod(0,this)">-5</button><button name=hext onClick="hexapod(0,this)">+5</button>
+
+<td align=center><span id=hex1></span><br><button name=hext onClick="hexapod(1,this)">-1</button><button name=hext onClick="hexapod(1,this)">+1</button>
+                                      <br><button name=hext onClick="hexapod(1,this)">-5</button><button name=hext onClick="hexapod(1,this)">+5</button>
+
+<td align=center><span id=hex2></span><br><button name=hext onClick="hexapod(2,this)">-1</button><button name=hext onClick="hexapod(2,this)">+1</button>
+                                      <br><button name=hext onClick="hexapod(2,this)">-5</button><button name=hext onClick="hexapod(2,this)">+5</button>
+
+<tr>
+<td>Rotation (&deg;)
+<br>
+<button onClick="scaleButtons('hexr',10,5,1E-9)">x 10</button>
+<button onClick="scaleButtons('hexr',.1,5,1E-9)">/ 10</button>
+<td align=center><span id=hex3></span><br><button name=hexr onClick="hexapod(3,this)">-1</button><button name=hexr onClick="hexapod(3,this)">+1</button>
+                                      <br><button name=hexr onClick="hexapod(3,this)">-5</button><button name=hexr onClick="hexapod(3,this)">+5</button>
+
+<td align=center><span id=hex4></span><br><button name=hexr onClick="hexapod(4,this)">-1</button><button name=hexr onClick="hexapod(4,this)">+1</button>
+                                      <br><button name=hexr onClick="hexapod(4,this)">-5</button><button name=hexr onClick="hexapod(4,this)">+5</button>
+
+<td align=center><span id=hex5></span><br><button name=hexr onClick="hexapod(5,this)">-1</button><button name=hexr onClick="hexapod(5,this)">+1</button>
+                                      <br><button name=hexr onClick="hexapod(5,this)">-5</button><button name=hexr onClick="hexapod(5,this)">+5</button>
+
+<tr><td colspan=4>
+<form onSubmit="return false;">
+<input name=pos value="0 0 0 0 0 0 "><button onClick="$('hstatus').innerHTML='Moving'; rexec('hexapod.js move '+form['pos'].value,hexapodReply)">Move</button>
+<br>
+<input name=pivot value="-15.580 26.986 434.686"><button onClick="$('hstatus').innerHTML='Pivot'; rexec('hexapod.js pivot '+form['pivot'].value,hexapodDone);state.pivot=form['pivot'].value.split(' ').map(Number)">Pivot</button>
+<span id=pivot></span>
+<!--input name=zoffset value=0-->
+<!--button onClick="form.pivot.value = state.hexapod[0] + ' '+ state.hexapod[1] + ' '+(Number(form.zoffset.value)+state.hexapod[2]);rexec('hexapod.js pivot '+form['pivot'].value,hexapodDone)">Pivot about current position (plus Z offset)</button -->
+<br>
+<input name=speed value="5"><button onClick="$('hstatus').innerHTML='Pivot'; rexec('hexapod.js speed '+form['speed'].value,hexapodDone)">Speed</button>
+<br>
+<span id=hresult></span>
+</form>
+</table>
+</div>
+
+<div class=section id=divNotes>
+<H1>Notes</H1>
+
+<form name=note onSubmit="return false;">
+<input id=startHere name=text style="width:90%">
+<button style="width:10%" onClick="o = form.text; if (o.value) rexec('note.js '+o.value,noteDone,true); ">Save</button>
+</form>
+
+</div>
+
+<div class=section id=divConsole style="overflow:auto">
+<H1>Console</H1>
+<span id=console ></span>
+</div>
+
+<td class=layout>
+
+
+<div class=section id=divLog>
+<H1>Log</H1>
+<div id=noteLog style="font-family: Courier">
+</div>
+</div>
+</table>
+
+<span style="background:white" id=debug></span>
+
+<script type="text/javascript">
+//coordinate system
+var cs = {origin: [0,0,0], x:[1,0,0], y:[0,1,0], z:[0,0,1]};
+cs.angle = Matrix.rotation([0,0,1],Math.PI/6);
+cs.transform = cs.angle.times(Matrix.rotation([0,1,0],Math.PI)); //rotation of reference w.r.t. hexapod
+//reference frame
+var rf = {origin: cs.angle.times([0,31.1608,434.6859]), //in the hexapod frame
+		  x: cs.transform.times(cs.x),
+		  y: cs.transform.times(cs.y),
+		  z: cs.transform.times(cs.z),
+		  transform: cs.transform.inverse()};
+
+var canvas = document.getElementById('display');
+var ctx = canvas.getContext('2d');
+var scale = .2;
+screenInfo = ({vertex:[-15, -5, 5], normal:[0, 0, 0], u:[], v:vnorm([0,0,1]), orientation:[1, -1], velocity: 8});
+ctx.save();
+var mouse = {maxScale:1000, down: false, x:0, y:0, vertex: screenInfo.vertex};
+
+resetCanvas();
+function resetCanvas()
+{
+	//canvas.width = canvas.parentNode.clientWidth;
+	//	canvas.height = window.innerHeight;
+	cw = canvas.width/2;
+	ch = canvas.height/2;
+	ctx.restore();
+	ctx.save();
+	ctx.translate(cw+.5,ch*3/2+.5);
+	ctx.scale(1,-1);
+	ctx.clearRect ( -cw*2 , -ch*2 , cw*4 , ch*4 );
+}
+
+function setViewpoint(vertex)
+{
+	screenInfo.vertex = vscale(vnorm(vertex),10)
+	screenInfo.normal = vnorm(vsub(cs.origin,screenInfo.vertex));
+	screenInfo.u = vnorm(vcross(screenInfo.normal,screenInfo.v));
+	screenInfo.v = vnorm(vcross(screenInfo.u,screenInfo.normal));
+}
+
+setViewpoint(screenInfo.vertex);
+
+function rgb(R,G,B) {return 'rgb('+R+','+G+','+B+')';}
+function rgba(R,G,B,A) {return 'rgba('+R+','+G+','+B+','+(A||'.8')+')'}
+function line(a,b,stroke,fill)
+{
+	ctx.beginPath();
+	if (fill) 	ctx.fillStyle = fill;
+	if (stroke) ctx.strokeStyle = stroke;
+	if (a.length > 2) a=pointToLocal(screenInfo,a);
+	if (b.length > 2) b=pointToLocal(screenInfo,b);
+	ctx.moveTo(scale*a[0],scale*a[1]);
+	ctx.lineTo(scale*b[0],scale*b[1]);
+	ctx.stroke();
+}
+function line(a,b,stroke,dash)
+{
+	ctx.beginPath();
+	if (dash) 	ctx.setLineDash(dash);
+	if (stroke) ctx.strokeStyle = stroke;
+	if (a.length > 2) a=pointToLocal(screenInfo,a);
+	if (b.length > 2) b=pointToLocal(screenInfo,b);
+	ctx.moveTo(scale*a[0],scale*a[1]);
+	ctx.lineTo(scale*b[0],scale*b[1]);
+	ctx.stroke();
+}
+
+function polyline(points,stroke,close,dash) // [ [pt1, pt2, ...],[]]
+{
+	ctx.beginPath();
+	if (dash) 	ctx.setLineDash(dash);
+	if (stroke) ctx.strokeStyle = stroke;
+	var a = pointToLocal(screenInfo,points[0]);
+	ctx.moveTo(scale*a[0],scale*a[1]);
+	for (var i=1;i<points.length;i++)
+	{
+		a = pointToLocal(screenInfo,points[i]);
+		ctx.lineTo(scale*a[0],scale*a[1]);
+	}
+	if (close) ctx.closePath();
+	ctx.stroke();
+}
+
+objects = {hexapod: [], cargo:[]};
+
+function generateGeometry()
+{
+	var p2 = 2.0*Math.PI;
+	var N = 36;
+	var t = []; var z = 0; var r = 500; 
+	for (var i=0; i<N; i++) {t.push([r*Math.cos(p2*i/N),r*Math.sin(p2*i/N),z]);}
+	objects.hexapod.push(t);
+	t=[];z=0; r = 450;
+	for (var i=0; i<N; i++) {t.push([r*Math.cos(p2*i/N),r*Math.sin(p2*i/N),z]);}
+	objects.hexapod.push(t);
+//	t=[];z=-100; r = 450;
+//	for (var i=0; i<N; i++) {t.push([r*Math.cos(p2*i/N),r*Math.sin(p2*i/N),z]);}
+//	objects.hexapod.push(t);
+//	t=[];z=-100; r = 500;
+//	for (var i=0; i<N; i++) {t.push([r*Math.cos(p2*i/N),r*Math.sin(p2*i/N),z]);}
+//	objects.hexapod.push(t);
+
+	N=6; 
+	t=[];z =0;
+	for (var i=0; i<N; i++) {t.push(inCargoCoordinates(cs.transform,rf.origin,[r*Math.sin(p2*i/N), r*Math.cos(p2*i/N),z]));}
+	objects.cargo.push(t);
+
+//	t=[];z =100;
+//	for (var i=0; i<N; i++) {t.push(inCoordinateSystem(cs.transform,rf.origin,[r*Math.cos(p2*i/N), r*Math.sin(p2*i/N),z]));}
+	objects.cargo.push(t);
+
+}
+generateGeometry();
+
+function previewToHexapod()
+{
+	// a translation is one thing, but how do we decompose the rotation into different axes?
+	// first transform the rotation into the hexapod coordinate system
+	// then extract the u, v, w Euler angles
+	//first we move the hexapod w.r.t. the preview pivot point
+	var p = state.preview.slice(0,3);
+	p = rf.transform.times(p);
+	//var M = eulerToRotation(cs,state.preview.slice(3));
+	//var a = rf.transform.times(M);
+	//a = rotationToEuler(a);
+	var R = eulerToRotation(rf,state.preview.slice(3));
+	b = rotationToEuler(R);
+	//how much does the rf origin move?
+	var dp = R.times(rf.origin);
+	p = vadd(p,vsub(rf.origin,dp));
+	return p.concat(b);
+}
+
+// https://en.wikipedia.org/wiki/Rotation_formalisms_in_three_dimensions#Rotation_matrix_%E2%86%94_Euler_axis/angle
+function rotationToEuler(M) //if not a multiple of pi, easy
+{
+	var sinv = - M.at(2,0);
+	var v = Math.asin(sinv);
+	var cosv = Math.cos(v);
+	var sinu = M.at(2,1)/cosv;
+	var u = Math.asin(sinu);
+	var sinw = M.at(1,0)/cosv;
+	var w = Math.asin(sinw);
+	return vscale([u,v,w],180/Math.PI);
+}
+function eulerToRotation(cs,uvw)
+{
+	var u = Matrix.rotation(cs.x,Math.PI*uvw[0]/180.0);
+	var v = Matrix.rotation(cs.y,Math.PI*uvw[1]/180.0);
+	var w = Matrix.rotation(cs.z,Math.PI*uvw[2]/180.0);
+	return w.times(v).times(u);
+}
+
+function applyMotion(hex,points)
+{
+	var p = [];
+	var M = eulerToRotation(cs,hex.slice(3));
+	for (var i=0; i<points.length; i++)
+	{
+		var x = M.times(vadd(points[i],hex));	
+		p[i] = x;	
+	}
+	return p;
+}
+
+function applyHexapodMotion(points)
+{
+	var hex = state.hexapod;
+	var p = [];
+	var u = Matrix.rotation(cs.x,Math.PI*hex[3]/180.0);
+	var v = Matrix.rotation(cs.y,Math.PI*hex[4]/180.0);
+	var w = Matrix.rotation(cs.z,Math.PI*hex[5]/180.0);
+	var uvw = u.times(v).times(w);
+	for (var i=0; i<points.length; i++)
+	{
+		var x = uvw.times(vadd(points[i],hex));	
+		p[i] = x;	
+	}
+	return p;
+}
+
+function inCargoCoordinates(rotation, origin, point)
+{
+	return vadd(rotation.times(point),origin);
+}
+
+function redraw()
+{
+	resetCanvas();
+	var L = 350;
+	//baseline position
+	line(cs.origin,vscale(cs.x,L),'red');
+	line(cs.origin,vscale(cs.y,L),'green');
+	line(cs.origin,vscale(cs.z,L),'blue');
+	for (var x in objects) 
+		for (var i in objects[x])
+			polyline(objects[x][i],rgba(50,50,50,.8),true);
+
+	$('pivot').innerHTML = '<pre>'+ (new Matrix(1,3,rf.origin).toString(3))+'</pre>';
+	$('transform').innerHTML = '<pre>'+cs.transform.toString(3)+'</pre>';
+
+	//current position
+	line(rf.origin,vadd(rf.origin,vscale(rf.x,L)),'red',[5,5]);
+	line(rf.origin,vadd(rf.origin,vscale(rf.y,L)),'green');
+	line(rf.origin,vadd(rf.origin,vscale(rf.z,L)),'blue');
+
+	for (var x in objects) 
+		for (var i in objects[x])
+			polyline(applyMotion(state.hexapod,objects[x][i]),'black',true,[5,5]);
+
+	//preview position
+	var hex = previewToHexapod();
+
+	for (var x in objects) 
+		for (var i in objects[x])
+			polyline(applyMotion(hex,objects[x][i]),'red',true,[3,3]);
+
+
+	//how does the virtual reference frame move?
+	polyline(applyMotion(hex,[rf.origin,vadd(rf.origin,vscale(rf.x,L))]),'red',false,[3,3]);
+	polyline(applyMotion(hex,[rf.origin,vadd(rf.origin,vscale(rf.y,L))]),'green',false,[3,3]);
+	polyline(applyMotion(hex,[rf.origin,vadd(rf.origin,vscale(rf.z,L))]),'blue',false,[3,3]);
+}	
+
+redraw();
+
+window.addEventListener('resize', redraw, false);
+
+</script>
+<script>
+
+Number.prototype.toFloat = function(prec)
+{
+   var s = this.toFixed(prec)
+   while (s.length > 1 && (s[s.length-1] == '0' || s[s.length-1] == '.'))
+   {
+    s = s.substr(0,s.length-1)
+    if (s[s.length-1] == '.') break
+   }
+   return s
+}
+
+function scaleButtons(name,scale,max,min)
+{
+ var b = document.getElementsByName(name);
+ for (var i=0; i<b.length; i++)
+ {
+  var y = Number(b[i].innerHTML) * scale
+  if (Math.abs(y) > max || Math.abs(y) < min)
+    continue
+  var s = (Number(b[i].innerHTML) * scale).toFloat(9)
+  b[i].innerHTML = s > 0 ? ('+' + s) : '' + s
+ }
+}
+
+
+function notePrint(x)
+{
+ $('noteLog').innerHTML = x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/gm,'\n<br>').replace(/(\d\d)(\d\d)(\d\d):/g,"<b>$1:$2:$3</b>")
+}
+
+function noteDone(x)
+{
+ // writeConsole('<b>'+x+'</b>')
+ // loadXMLDoc('/exec?note.js', notePrint)
+
+ rexec('note.js',notePrint,true)
+}
+
+function hexapodDone(x)
+{
+ if (x)
+ {
+    $('hresult').innerHTML = x
+	$('hstatus').innerHTML="Ready";
+ }
+}
+
+function hexapodReply(x)
+{
+ if (x)
+ {
+    $('hresult').innerHTML = x
+	if (x.indexOf("Error") != -1) return
+
+    var n = x.split(/\s+/g)
+	for (var i=0; i<6; i++) state.hexapod[i] = Number(n[i])
+	$('hstatus').innerHTML= n.length > 5 ? n[6] : "Ready";
+	$('hex0').innerHTML=state.hexapod[0].toFloat(9);
+	$('hex1').innerHTML=state.hexapod[1].toFloat(9);
+	$('hex2').innerHTML=state.hexapod[2].toFloat(9);
+	$('hex3').innerHTML=state.hexapod[3].toFloat(9);
+	$('hex4').innerHTML=state.hexapod[4].toFloat(9);
+	$('hex5').innerHTML=state.hexapod[5].toFloat(9);
+
+	$('pivot').innerHTML=state.pivot.join(' ');
+	redraw();
+ }
+ else
+   rexec('hexapod.js move',hexapodReply)
+}
+
+var startupQueue = [
+function() {rexec('hexapod.js move',hexapodReply) },
+function() {rexec('note.js',notePrint) },
+
+]
+
+function startup()
+{
+ for (var i=0; i<startupQueue; i++)
+  startupQueue[i]()
+}
+
+startup()
+
+function preview(index,obj)
+{
+ if (obj) state.preview[index] += Number(obj.innerHTML);
+	$('pre0').innerHTML=state.preview[0].toFloat(9);
+	$('pre1').innerHTML=state.preview[1].toFloat(9);
+	$('pre2').innerHTML=state.preview[2].toFloat(9);
+	$('pre3').innerHTML=state.preview[3].toFloat(9);
+	$('pre4').innerHTML=state.preview[4].toFloat(9);
+	$('pre5').innerHTML=state.preview[5].toFloat(9);
+ redraw();
+}
+
+preview();
+
+function applyPreview()
+{
+	rexec('hexapod.js move '+previewToHexapod().join(' '),hexapodReply);
+}
+
+function hexapod(index,obj)
+{
+ if (obj) state.hexapod[index] += Number(obj.innerHTML)
+
+ $('hstatus').innerHTML="Moving"
+ //var msg = '/exec?hexapod.js move'
+var msg = 'hexapod.js move'
+ for (var x =0; x< state.hexapod.length; x++) msg += ' ' + state.hexapod[x].toFixed(6)
+ //loadXMLDoc(msg,hexapodReply)
+rexec(msg,hexapodReply);
+}
+
+function cgh(index,obj)
+{
+ if (obj)
+ {
+ 	if (index.constructor.name == 'Array')
+ 	  for (var i =0; i<index.length; i++) state.cgh[i] += index[i] * Number(obj.innerHTML)
+ 	else
+ 	  state.cgh[index] += Number(obj.innerHTML)
+ }
+
+ $('cstatus').innerHTML="Moving"
+ var msg = '/exec?cgh.js '
+ for (var x =0; x< 3; x++) msg += ' ' + state.cgh[x].toFixed(9)
+ loadXMLDoc(msg,cghReply)
+}
+
+$('startHere').focus()
+resizeLastNode($('divConsole'),45)
+</script>
+</body>
+</html>

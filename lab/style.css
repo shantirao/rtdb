@@ -1,0 +1,9 @@
+.right {float:right}
+table {border-collapse:collapse;}
+td {vertical-align:top; border: 1px solid #a0a0c0}
+td.layout {border: 0px; padding:0px; margin:0px; vertical-align:top}
+h1 {font-size: 12pt; margin-top: 0px; background:#ffd0b0; margin:-3px; border-radius: 3px; margin-bottom: 3px; padding: 4px;}
+.section { vertical-align:top;background: #ffffff;border: 1px solid #c02020; border-radius:5px; margin: 5px; padding: 3px; }
+.block {display:inline-block; vertical-align:top;  position:relative;}
+.pane {display:inline-block; vertical-align:top;  position:relative;border:1px solid black; padding:6px}
+.click:hover {cursor: pointer;}
